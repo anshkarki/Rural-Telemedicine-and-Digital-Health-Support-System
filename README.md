@@ -41,7 +41,7 @@ This project aims to solve these challenges through digital solutions such as re
 - MySQL  
 
 ### Other Tools
-- Google Meet / WebRTC (Video Consultation)  
+- Google Meet
 - Authentication & Role-Based Access Control  
 
 ---
