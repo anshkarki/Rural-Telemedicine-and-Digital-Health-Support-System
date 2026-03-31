@@ -1,0 +1,51 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" /><meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Health Records — RuralMed</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <link href="https://fonts.googleapis.com/css2?family=Syne:wght@700;800&family=DM+Sans:wght@400;500;600&display=swap" rel="stylesheet" />
+  <style>:root{font-family:'DM Sans',sans-serif} h1,h2{font-family:'Syne',sans-serif}</style>
+</head>
+<body class="bg-slate-50">
+<div id="app"><div class="flex items-center justify-center h-screen"><svg class="animate-spin w-10 h-10 text-teal-500" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"></path></svg></div></div>
+<script src="/js/api.js"></script><script src="/js/ui.js"></script>
+<script>
+if (!requireAuth('patient')) throw new Error('Unauthorized');
+
+async function loadPage() {
+  const records = await GET('/health/records/my').catch(() => []);
+
+  const cards = records.length ? records.map(r => `
+    <div class="bg-white rounded-2xl shadow-sm border border-slate-100 p-6 hover:shadow-md transition-all">
+      <div class="flex items-start justify-between mb-4">
+        <div>
+          <div class="text-xs text-slate-400 mb-1">${formatDate(r.appointment_date)} · ${r.time_slot || ''}</div>
+          <h3 class="font-bold text-slate-800">Dr. ${r.doctor_name}</h3>
+          <p class="text-teal-600 text-sm">${r.specialty}</p>
+        </div>
+        <div class="text-xs text-slate-400 text-right">${formatDate(r.created_at)}</div>
+      </div>
+      <div class="space-y-3">
+        ${r.diagnosis ? `<div class="bg-blue-50 rounded-xl p-3"><div class="text-xs font-bold text-blue-600 uppercase tracking-wide mb-1">Diagnosis</div><div class="text-slate-700 text-sm">${r.diagnosis}</div></div>` : ''}
+        ${r.symptoms ? `<div class="bg-amber-50 rounded-xl p-3"><div class="text-xs font-bold text-amber-600 uppercase tracking-wide mb-1">Symptoms Observed</div><div class="text-slate-700 text-sm">${r.symptoms}</div></div>` : ''}
+        ${r.notes ? `<div class="bg-slate-50 rounded-xl p-3"><div class="text-xs font-bold text-slate-500 uppercase tracking-wide mb-1">Doctor's Notes</div><div class="text-slate-700 text-sm">${r.notes}</div></div>` : ''}
+        ${r.follow_up_date ? `<div class="flex items-center gap-2 text-sm text-emerald-700 bg-emerald-50 rounded-xl px-3 py-2"><span>📅</span><span class="font-semibold">Follow-up Date:</span> ${formatDate(r.follow_up_date)}</div>` : ''}
+      </div>
+    </div>
+  `).join('') : emptyState('No health records yet. Records appear after consultations.', '📋');
+
+  const content = `
+    <div class="p-8">
+      ${pageHeader('Health Records', 'Your complete medical history from all consultations')}
+      <div class="space-y-5">${cards}</div>
+    </div>
+  `;
+
+  document.getElementById('app').innerHTML = buildLayout('patient', '/patient/health-records.html', content);
+}
+
+loadPage();
+</script>
+</body>
+</html>

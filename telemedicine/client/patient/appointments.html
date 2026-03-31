@@ -1,0 +1,163 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" /><meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>My Appointments — RuralMed</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <link href="https://fonts.googleapis.com/css2?family=Syne:wght@700;800&family=DM+Sans:wght@400;500;600&display=swap" rel="stylesheet" />
+  <style>:root{font-family:'DM Sans',sans-serif} h1,h2{font-family:'Syne',sans-serif}</style>
+</head>
+<body class="bg-slate-50">
+<div id="app"><div class="flex items-center justify-center h-screen"><svg class="animate-spin w-10 h-10 text-teal-500" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"></path></svg></div></div>
+<script src="/js/api.js"></script><script src="/js/ui.js"></script>
+<script>
+if (!requireAuth('patient')) throw new Error('Unauthorized');
+
+let allAppts = [];
+
+async function loadPage() {
+  allAppts = await GET('/appointments/my').catch(() => []);
+  renderPage('all');
+}
+
+function renderPage(filter) {
+  const filtered = filter === 'all' ? allAppts : allAppts.filter(a => a.status === filter);
+
+  const tabs = ['all','pending','payment_pending','confirmed','completed','cancelled'].map(t => `
+    <button onclick="renderPage('${t}')" class="px-4 py-2 text-sm font-semibold rounded-xl transition-all ${filter === t ? 'bg-teal-600 text-white shadow' : 'bg-white text-slate-500 hover:bg-slate-100'}">
+      ${t === 'all' ? 'All' : t.replace('_',' ').replace(/\b\w/g,c=>c.toUpperCase())}
+      <span class="ml-1.5 text-xs opacity-70">(${t === 'all' ? allAppts.length : allAppts.filter(a=>a.status===t).length})</span>
+    </button>
+  `).join('');
+
+  const rows = filtered.length ? filtered.map(a => `
+    <div class="bg-white rounded-2xl shadow-sm border border-slate-100 p-5 hover:shadow-md transition-all">
+      <div class="flex items-start justify-between gap-4 flex-wrap">
+        <div class="flex items-center gap-4">
+          <div class="w-12 h-12 bg-teal-100 rounded-xl flex items-center justify-center text-teal-700 font-bold text-sm flex-shrink-0">
+            ${new Date(a.appointment_date).getDate()}<br/><span class="text-xs font-normal">${new Date(a.appointment_date).toLocaleString('en-IN',{month:'short'})}</span>
+          </div>
+          <div>
+            <div class="font-bold text-slate-800">Dr. ${a.doctor_name}</div>
+            <div class="text-teal-600 text-sm">${a.specialty}</div>
+            <div class="text-slate-400 text-xs mt-1">📅 ${formatDate(a.appointment_date)} · ⏰ ${a.time_slot}</div>
+          </div>
+        </div>
+        <div class="flex flex-col items-end gap-2">
+          ${statusBadge(a.status)}
+          ${statusBadge(a.payment_status)}
+        </div>
+      </div>
+
+      <!-- Actions row -->
+      <div class="mt-4 pt-4 border-t border-slate-50 flex flex-wrap gap-2 items-center">
+        ${a.status === 'payment_pending' ? `
+          <button onclick="handlePayment(${a.id})"
+            class="px-4 py-2 bg-orange-500 hover:bg-orange-600 text-white text-xs font-bold rounded-xl transition-all shadow">
+            💳 Pay ₹— & Confirm Appointment
+          </button>
+        ` : ''}
+        ${a.status === 'confirmed' && a.meet_link ? `
+          <a href="${a.meet_link}" target="_blank"
+            class="px-4 py-2 bg-teal-600 hover:bg-teal-700 text-white text-xs font-bold rounded-xl transition-all flex items-center gap-1">
+            🎥 Join Video Consultation
+          </a>
+        ` : ''}
+        ${a.status === 'confirmed' && !a.meet_link ? `
+          <div class="px-4 py-2 bg-slate-50 text-slate-400 text-xs rounded-xl border border-dashed border-slate-200">
+            ⏳ Waiting for doctor to share Meet link
+          </div>
+        ` : ''}
+        ${!['completed','cancelled'].includes(a.status) ? `
+          <button onclick="cancelAppt(${a.id})"
+            class="px-4 py-2 bg-red-50 hover:bg-red-100 text-red-600 text-xs font-bold rounded-xl transition-all">
+            ✕ Cancel
+          </button>
+        ` : ''}
+        <span class="ml-auto text-xs text-slate-400">Booked ${formatDateTime(a.created_at)}</span>
+      </div>
+    </div>
+  `).join('') : emptyState('No appointments found', '📅');
+
+  const content = `
+    <div class="p-8">
+      ${pageHeader('My Appointments', 'Manage all your doctor appointments', `<a href="/patient/find-doctor.html" class="px-5 py-2.5 bg-teal-600 text-white text-sm font-bold rounded-xl hover:bg-teal-700 transition-all">+ Book New</a>`)}
+      <div class="flex flex-wrap gap-2 mb-6">${tabs}</div>
+      <div class="space-y-4" id="apptList">${rows}</div>
+    </div>
+
+    <!-- Payment Modal -->
+    ${modalWrapper('payModal', '💳 Complete Payment', `
+      <div id="payDetails" class="bg-orange-50 rounded-xl p-5 mb-5 space-y-2"></div>
+      <div class="bg-amber-50 border border-amber-200 rounded-xl p-4 mb-5 text-sm text-amber-700">
+        <strong>Note:</strong> This is a simulated payment. In production, this integrates with Razorpay/UPI. After payment, the doctor will send you a Google Meet link through the app.
+      </div>
+      <div class="space-y-3">
+        <div class="space-y-1.5">
+          <label class="text-sm font-semibold text-slate-700">Payment Method</label>
+          <select class="w-full px-4 py-2.5 border border-slate-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-teal-500 bg-white">
+            <option>UPI (Recommended)</option>
+            <option>Net Banking</option>
+            <option>Debit/Credit Card</option>
+          </select>
+        </div>
+        <div class="space-y-1.5">
+          <label class="text-sm font-semibold text-slate-700">UPI ID</label>
+          <input type="text" placeholder="yourname@upi" class="w-full px-4 py-2.5 border border-slate-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-teal-500" />
+        </div>
+      </div>
+      <button id="payBtn" onclick="processPayment()" class="w-full mt-5 py-3 bg-orange-500 hover:bg-orange-600 text-white font-bold rounded-xl transition-all">
+        Pay & Confirm Appointment
+      </button>
+    `)}
+  `;
+
+  document.getElementById('app').innerHTML = buildLayout('patient', '/patient/appointments.html', content);
+}
+
+let payingApptId = null;
+function handlePayment(id) {
+  payingApptId = id;
+  const appt = allAppts.find(a => a.id === id);
+  document.getElementById('payDetails').innerHTML = `
+    <div class="font-bold text-slate-800 text-lg mb-1">Dr. ${appt.doctor_name}</div>
+    <div class="text-slate-600 text-sm">${appt.specialty}</div>
+    <div class="flex justify-between mt-3 text-sm"><span class="text-slate-500">Date</span><span class="font-semibold">${formatDate(appt.appointment_date)}</span></div>
+    <div class="flex justify-between text-sm"><span class="text-slate-500">Time</span><span class="font-semibold">${appt.time_slot}</span></div>
+    <div class="flex justify-between mt-2 pt-2 border-t border-orange-100 font-bold"><span>Total Amount</span><span class="text-orange-600 text-lg">₹500</span></div>
+  `;
+  openModal('payModal');
+}
+
+async function processPayment() {
+  const btn = document.getElementById('payBtn');
+  showLoading(btn, 'Processing...');
+  try {
+    await new Promise(r => setTimeout(r, 1500)); // Simulate payment delay
+    const res = await POST(`/appointments/${payingApptId}/pay`, {});
+    closeModal('payModal');
+    showToast(res.message, 'success');
+    allAppts = await GET('/appointments/my');
+    renderPage('confirmed');
+  } catch(err) {
+    showToast(err.message, 'error');
+    hideLoading(btn);
+  }
+}
+
+async function cancelAppt(id) {
+  if (!confirm('Cancel this appointment?')) return;
+  try {
+    await PATCH(`/appointments/${id}/cancel`, {});
+    showToast('Appointment cancelled', 'info');
+    allAppts = await GET('/appointments/my');
+    renderPage('all');
+  } catch(err) {
+    showToast(err.message, 'error');
+  }
+}
+
+loadPage();
+</script>
+</body>
+</html>

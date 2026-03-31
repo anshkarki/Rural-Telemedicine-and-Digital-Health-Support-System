@@ -1,0 +1,73 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" /><meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Referral Status — RuralMed</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <link href="https://fonts.googleapis.com/css2?family=Syne:wght@700&family=DM+Sans:wght@400;500;600&display=swap" rel="stylesheet" />
+  <style>:root{font-family:'DM Sans',sans-serif}</style>
+</head>
+<body class="bg-slate-50">
+<div id="app"><div class="flex items-center justify-center h-screen"><svg class="animate-spin w-10 h-10 text-teal-500" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"></path></svg></div></div>
+<script src="/js/api.js"></script><script src="/js/ui.js"></script>
+<script>
+if (!requireAuth('patient')) throw new Error('Unauthorized');
+
+async function loadPage() {
+  const referrals = await GET('/health/referrals/my').catch(() => []);
+
+  const cards = referrals.length ? referrals.map(r => `
+    <div class="bg-white rounded-2xl shadow-sm border border-slate-100 p-6 hover:shadow-md transition-all">
+      <div class="flex items-start justify-between mb-4">
+        <div>
+          <h3 class="font-bold text-slate-800 text-lg">🏥 ${r.hospital_name}</h3>
+          <p class="text-teal-600 text-sm">Referred by Dr. ${r.doctor_name} (${r.specialty})</p>
+          <p class="text-slate-400 text-xs mt-1">${formatDate(r.created_at)}</p>
+        </div>
+        ${statusBadge(r.status)}
+      </div>
+      <div class="bg-slate-50 rounded-xl p-4 text-sm">
+        <div class="font-semibold text-slate-700 mb-1">Reason for Referral</div>
+        <p class="text-slate-600">${r.reason}</p>
+      </div>
+      ${r.admin_notes ? `
+        <div class="mt-3 bg-sky-50 rounded-xl p-4 text-sm">
+          <div class="font-semibold text-sky-700 mb-1">Admin Notes</div>
+          <p class="text-slate-600">${r.admin_notes}</p>
+        </div>
+      ` : ''}
+
+      <!-- Status Steps -->
+      <div class="mt-4 flex items-center gap-2 text-xs">
+        ${['pending','sent','accepted'].map((s, idx) => {
+          const statuses = ['pending','sent','accepted'];
+          const curIdx = statuses.indexOf(r.status);
+          const done = idx <= curIdx;
+          return `
+            <div class="flex items-center gap-2">
+              <div class="flex flex-col items-center">
+                <div class="w-7 h-7 rounded-full flex items-center justify-center font-bold ${done ? 'bg-teal-500 text-white' : 'bg-slate-200 text-slate-400'}">${idx+1}</div>
+                <span class="mt-1 ${done ? 'text-teal-600 font-semibold' : 'text-slate-400'}">${s.charAt(0).toUpperCase()+s.slice(1)}</span>
+              </div>
+              ${idx < 2 ? `<div class="flex-1 h-0.5 ${done && idx < curIdx ? 'bg-teal-500' : 'bg-slate-200'} mb-4"></div>` : ''}
+            </div>
+          `;
+        }).join('')}
+      </div>
+    </div>
+  `).join('') : emptyState('No referrals issued. Your doctor will refer you if specialist care is needed.', '🏥');
+
+  const content = `
+    <div class="p-8">
+      ${pageHeader('Referral Status', 'Track your referrals to higher hospitals')}
+      <div class="space-y-5">${cards}</div>
+    </div>
+  `;
+
+  document.getElementById('app').innerHTML = buildLayout('patient', '/patient/referrals.html', content);
+}
+
+loadPage();
+</script>
+</body>
+</html>

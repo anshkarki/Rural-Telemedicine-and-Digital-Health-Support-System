@@ -1,0 +1,138 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" /><meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>My Prescriptions — RuralMed</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <link href="https://fonts.googleapis.com/css2?family=Syne:wght@700;800&family=DM+Sans:wght@400;500;600&display=swap" rel="stylesheet" />
+  <style>
+    :root{font-family:'DM Sans',sans-serif} h1,h2{font-family:'Syne',sans-serif}
+    @media print {
+      body > div { display: none !important; }
+      #printArea { display: block !important; }
+    }
+    #printArea { display: none; }
+  </style>
+</head>
+<body class="bg-slate-50">
+<div id="app"><div class="flex items-center justify-center h-screen"><svg class="animate-spin w-10 h-10 text-teal-500" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"></path></svg></div></div>
+
+<!-- Print Area -->
+<div id="printArea" class="p-8 max-w-2xl mx-auto" style="display:none">
+  <div style="border: 2px solid #0d9488; padding: 24px; border-radius: 12px;">
+    <div style="display:flex; align-items:center; gap:12px; border-bottom: 2px solid #0d9488; padding-bottom:16px; margin-bottom:16px">
+      <div style="width:48px;height:48px;background:#0d9488;border-radius:12px;display:flex;align-items:center;justify-content:center;color:white;font-size:24px">⚕</div>
+      <div><div style="font-size:22px;font-weight:800;color:#0d9488">RuralMed</div><div style="font-size:12px;color:#64748b">Digital Prescription</div></div>
+    </div>
+    <div id="printContent"></div>
+    <div style="margin-top:24px;padding-top:16px;border-top:1px solid #e2e8f0;font-size:11px;color:#94a3b8;text-align:center">
+      This is a digitally issued prescription from RuralMed Telemedicine System. Valid only with doctor's digital signature.
+    </div>
+  </div>
+</div>
+
+<script src="/js/api.js"></script><script src="/js/ui.js"></script>
+<script>
+if (!requireAuth('patient')) throw new Error('Unauthorized');
+
+let prescriptions = [];
+
+async function loadPage() {
+  prescriptions = await GET('/health/prescriptions/my').catch(() => []);
+
+  const cards = prescriptions.length ? prescriptions.map((p, i) => {
+    const meds = typeof p.medicines === 'string' ? JSON.parse(p.medicines) : (p.medicines || []);
+    return `
+    <div class="bg-white rounded-2xl shadow-sm border border-slate-100 p-6 hover:shadow-md transition-all">
+      <div class="flex items-start justify-between mb-4">
+        <div>
+          <h3 class="font-bold text-slate-800">Dr. ${p.doctor_name}</h3>
+          <p class="text-teal-600 text-sm">${p.specialty}</p>
+          <p class="text-slate-400 text-xs mt-1">Issued: ${formatDateTime(p.issued_at)}</p>
+        </div>
+        <button onclick="printPrescription(${i})"
+          class="flex items-center gap-2 px-4 py-2 bg-teal-50 hover:bg-teal-100 text-teal-700 text-sm font-semibold rounded-xl transition-all">
+          🖨️ Print / Save PDF
+        </button>
+      </div>
+
+      <!-- Medicines Table -->
+      <div class="overflow-x-auto">
+        <table class="w-full text-sm">
+          <thead><tr class="bg-teal-50">
+            <th class="text-left px-4 py-2 text-teal-700 text-xs font-bold rounded-tl-lg">Medicine</th>
+            <th class="text-left px-4 py-2 text-teal-700 text-xs font-bold">Dosage</th>
+            <th class="text-left px-4 py-2 text-teal-700 text-xs font-bold">Frequency</th>
+            <th class="text-left px-4 py-2 text-teal-700 text-xs font-bold rounded-tr-lg">Duration</th>
+          </tr></thead>
+          <tbody class="divide-y divide-slate-50">
+            ${meds.map(m => `
+              <tr>
+                <td class="px-4 py-3 font-semibold text-slate-800">${m.name || '—'}</td>
+                <td class="px-4 py-3 text-slate-600">${m.dosage || '—'}</td>
+                <td class="px-4 py-3 text-slate-600">${m.frequency || '—'}</td>
+                <td class="px-4 py-3 text-slate-600">${m.duration || '—'}</td>
+              </tr>
+            `).join('')}
+          </tbody>
+        </table>
+      </div>
+
+      ${p.instructions ? `
+        <div class="mt-4 bg-amber-50 rounded-xl px-4 py-3 text-sm">
+          <span class="font-bold text-amber-700">Instructions: </span>
+          <span class="text-slate-700">${p.instructions}</span>
+        </div>
+      ` : ''}
+    </div>
+  `}).join('') : emptyState('No prescriptions yet. They appear after consultations.', '💊');
+
+  const content = `
+    <div class="p-8">
+      ${pageHeader('My Prescriptions', 'All digital prescriptions from your consultations')}
+      <div class="space-y-5">${cards}</div>
+    </div>
+  `;
+
+  document.getElementById('app').innerHTML = buildLayout('patient', '/patient/prescriptions.html', content);
+}
+
+function printPrescription(i) {
+  const p = prescriptions[i];
+  const meds = typeof p.medicines === 'string' ? JSON.parse(p.medicines) : (p.medicines || []);
+  const user = getUser();
+
+  document.getElementById('printContent').innerHTML = `
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:16px">
+      <div><div style="font-size:11px;color:#64748b;font-weight:600;text-transform:uppercase;letter-spacing:0.05em">Patient</div><div style="font-size:15px;font-weight:700">${user.name}</div></div>
+      <div><div style="font-size:11px;color:#64748b;font-weight:600;text-transform:uppercase;letter-spacing:0.05em">Doctor</div><div style="font-size:15px;font-weight:700">Dr. ${p.doctor_name}</div><div style="font-size:12px;color:#0d9488">${p.specialty}</div></div>
+      <div><div style="font-size:11px;color:#64748b;font-weight:600;text-transform:uppercase">Date Issued</div><div style="font-size:14px">${new Date(p.issued_at).toLocaleDateString('en-IN',{day:'2-digit',month:'long',year:'numeric'})}</div></div>
+    </div>
+    <table style="width:100%;border-collapse:collapse;margin-top:12px">
+      <thead><tr style="background:#f0fdfa">
+        <th style="text-align:left;padding:8px 12px;font-size:12px;color:#0d9488;font-weight:700;border-bottom:2px solid #0d9488">Medicine</th>
+        <th style="text-align:left;padding:8px 12px;font-size:12px;color:#0d9488;font-weight:700;border-bottom:2px solid #0d9488">Dosage</th>
+        <th style="text-align:left;padding:8px 12px;font-size:12px;color:#0d9488;font-weight:700;border-bottom:2px solid #0d9488">Frequency</th>
+        <th style="text-align:left;padding:8px 12px;font-size:12px;color:#0d9488;font-weight:700;border-bottom:2px solid #0d9488">Duration</th>
+      </tr></thead>
+      <tbody>
+        ${meds.map((m,idx) => `<tr style="background:${idx%2?'#f8fafc':'white'}">
+          <td style="padding:8px 12px;font-weight:600;border-bottom:1px solid #e2e8f0">${m.name||'—'}</td>
+          <td style="padding:8px 12px;border-bottom:1px solid #e2e8f0">${m.dosage||'—'}</td>
+          <td style="padding:8px 12px;border-bottom:1px solid #e2e8f0">${m.frequency||'—'}</td>
+          <td style="padding:8px 12px;border-bottom:1px solid #e2e8f0">${m.duration||'—'}</td>
+        </tr>`).join('')}
+      </tbody>
+    </table>
+    ${p.instructions ? `<div style="margin-top:12px;padding:12px;background:#fffbeb;border-radius:8px;font-size:13px"><strong>Instructions:</strong> ${p.instructions}</div>` : ''}
+  `;
+
+  document.getElementById('printArea').style.display = 'block';
+  window.print();
+  setTimeout(() => { document.getElementById('printArea').style.display = 'none'; }, 500);
+}
+
+loadPage();
+</script>
+</body>
+</html>

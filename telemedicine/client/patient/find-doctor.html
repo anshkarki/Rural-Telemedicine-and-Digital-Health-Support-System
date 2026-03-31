@@ -1,0 +1,192 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" /><meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Find a Doctor — RuralMed</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <link href="https://fonts.googleapis.com/css2?family=Syne:wght@700;800&family=DM+Sans:wght@400;500;600&display=swap" rel="stylesheet" />
+  <style>:root{font-family:'DM Sans',sans-serif} h1,h2{font-family:'Syne',sans-serif}</style>
+</head>
+<body class="bg-slate-50">
+<div id="app"><div class="flex items-center justify-center h-screen"><svg class="animate-spin w-10 h-10 text-teal-500" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"></path></svg></div></div>
+<script src="/js/api.js"></script><script src="/js/ui.js"></script>
+<script>
+if (!requireAuth('patient')) throw new Error('Unauthorized');
+
+let allDoctors = [];
+
+const specialties = ['General Physician','Cardiologist','Dermatologist','Pediatrician','Orthopedic','Gynecologist','ENT','Ophthalmologist','Neurologist','Psychiatrist','Dentist','Radiologist'];
+
+async function loadPage() {
+  allDoctors = await GET('/doctors').catch(() => []);
+  renderPage(allDoctors);
+}
+
+function renderPage(doctors) {
+  const cards = doctors.length ? doctors.map(d => `
+    <div class="bg-white rounded-2xl shadow-sm border border-slate-100 p-6 hover:shadow-md hover:border-teal-200 transition-all">
+      <div class="flex items-start gap-4">
+        <div class="w-14 h-14 bg-gradient-to-br from-teal-400 to-cyan-500 rounded-2xl flex items-center justify-center text-white text-2xl font-bold flex-shrink-0">
+          ${d.name?.[0] || 'D'}
+        </div>
+        <div class="flex-1 min-w-0">
+          <h3 class="font-bold text-slate-800">Dr. ${d.name}</h3>
+          <p class="text-teal-600 text-sm font-semibold">${d.specialty || 'General'}</p>
+          <p class="text-slate-500 text-xs mt-1">${d.qualification || ''} · ${d.experience_years || 0} yrs exp</p>
+          <p class="text-slate-400 text-xs">${d.phone || ''}</p>
+        </div>
+      </div>
+      <div class="mt-4 pt-4 border-t border-slate-50 flex items-center justify-between">
+        <div>
+          <span class="text-slate-400 text-xs">Consultation Fee</span>
+          <div class="text-teal-700 font-bold text-lg">₹${d.consultation_fee || 500}</div>
+        </div>
+        <button onclick="openBooking(${d.id}, '${d.name}', '${d.specialty || 'General'}', ${d.consultation_fee || 500})"
+          class="px-5 py-2.5 bg-teal-600 hover:bg-teal-700 text-white text-sm font-bold rounded-xl transition-all hover:shadow-md">
+          Book Now
+        </button>
+      </div>
+    </div>
+  `).join('') : emptyState('No doctors found matching your search', '👨‍⚕️');
+
+  const content = `
+    <div class="p-8">
+      ${pageHeader('Find a Doctor', 'Browse and book appointments with our qualified doctors')}
+
+      <!-- Search & Filter -->
+      <div class="bg-white rounded-2xl shadow-sm border border-slate-100 p-5 mb-6">
+        <div class="flex flex-col md:flex-row gap-4">
+          <div class="flex-1 relative">
+            <span class="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400">🔍</span>
+            <input id="searchName" type="text" placeholder="Search by doctor name..." oninput="filterDoctors()"
+              class="w-full pl-10 pr-4 py-2.5 border border-slate-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-teal-500" />
+          </div>
+          <select id="searchSpec" onchange="filterDoctors()"
+            class="px-4 py-2.5 border border-slate-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-teal-500 bg-white min-w-48">
+            <option value="">All Specialties</option>
+            ${specialties.map(s => `<option value="${s}">${s}</option>`).join('')}
+          </select>
+        </div>
+      </div>
+
+      <!-- Doctor Grid -->
+      <div id="doctorGrid" class="grid md:grid-cols-2 lg:grid-cols-3 gap-5">
+        ${cards}
+      </div>
+    </div>
+
+    <!-- Book Appointment Modal -->
+    ${modalWrapper('bookModal', 'Book Appointment', `
+      <div id="bookDoctorInfo" class="bg-teal-50 rounded-xl p-4 mb-5"></div>
+      <div class="space-y-4">
+        <div class="space-y-1.5">
+          <label class="text-sm font-semibold text-slate-700">Select Date <span class="text-red-500">*</span></label>
+          <input id="bookDate" type="date" min="${new Date().toISOString().split('T')[0]}"
+            class="w-full px-4 py-2.5 border border-slate-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-teal-500" onchange="loadSlots()" />
+        </div>
+        <div class="space-y-1.5">
+          <label class="text-sm font-semibold text-slate-700">Select Time Slot <span class="text-red-500">*</span></label>
+          <div id="slotsGrid" class="grid grid-cols-3 gap-2">
+            <p class="text-slate-400 text-sm col-span-3">Pick a date first</p>
+          </div>
+        </div>
+        <input type="hidden" id="selectedSlot" />
+        <button id="bookBtn" onclick="confirmBooking()" class="w-full py-3 bg-teal-600 hover:bg-teal-700 text-white font-bold rounded-xl transition-all">
+          Confirm & Proceed to Payment
+        </button>
+      </div>
+    `)}
+  `;
+
+  document.getElementById('app').innerHTML = buildLayout('patient', '/patient/find-doctor.html', content);
+}
+
+let currentDoctorId = null, currentFee = 0;
+
+function openBooking(id, name, spec, fee) {
+  currentDoctorId = id; currentFee = fee;
+  document.getElementById('bookDoctorInfo').innerHTML = `
+    <div class="flex items-center gap-3">
+      <div class="w-10 h-10 bg-teal-200 rounded-xl flex items-center justify-center text-teal-700 font-bold">${name[0]}</div>
+      <div>
+        <div class="font-bold text-slate-800">Dr. ${name}</div>
+        <div class="text-teal-600 text-sm">${spec} · <span class="font-bold">₹${fee}</span></div>
+      </div>
+    </div>
+  `;
+  document.getElementById('bookDate').value = '';
+  document.getElementById('slotsGrid').innerHTML = '<p class="text-slate-400 text-sm col-span-3">Pick a date first</p>';
+  document.getElementById('selectedSlot').value = '';
+  openModal('bookModal');
+}
+
+const TIME_SLOTS = ['09:00 AM','09:30 AM','10:00 AM','10:30 AM','11:00 AM','11:30 AM','12:00 PM','02:00 PM','02:30 PM','03:00 PM','03:30 PM','04:00 PM','04:30 PM','05:00 PM'];
+
+async function loadSlots() {
+  const date = document.getElementById('bookDate').value;
+  if (!date || !currentDoctorId) return;
+  const slotsGrid = document.getElementById('slotsGrid');
+  slotsGrid.innerHTML = '<p class="text-slate-400 text-sm col-span-3 animate-pulse">Loading slots...</p>';
+  const booked = await GET(`/appointments/slots/${currentDoctorId}?date=${date}`).catch(() => []);
+  slotsGrid.innerHTML = TIME_SLOTS.map(slot => {
+    const isTaken = booked.includes(slot);
+    return `<button onclick="selectSlot('${slot}', this)" ${isTaken ? 'disabled' : ''}
+      class="py-2 text-xs font-semibold rounded-xl border transition-all
+        ${isTaken ? 'bg-slate-100 text-slate-300 border-slate-200 cursor-not-allowed line-through' : 'border-teal-200 text-teal-700 hover:bg-teal-600 hover:text-white hover:border-teal-600'}
+        slot-btn" data-slot="${slot}">
+      ${slot}
+    </button>`;
+  }).join('');
+}
+
+function selectSlot(slot, el) {
+  document.querySelectorAll('.slot-btn').forEach(b => b.classList.remove('bg-teal-600','text-white','border-teal-600'));
+  el.classList.add('bg-teal-600','text-white','border-teal-600');
+  document.getElementById('selectedSlot').value = slot;
+}
+
+async function confirmBooking() {
+  const date = document.getElementById('bookDate').value;
+  const slot = document.getElementById('selectedSlot').value;
+  if (!date) return showToast('Please select a date', 'warning');
+  if (!slot) return showToast('Please select a time slot', 'warning');
+
+  const btn = document.getElementById('bookBtn');
+  showLoading(btn, 'Booking...');
+  try {
+    const res = await POST('/appointments', { doctor_id: currentDoctorId, appointment_date: date, time_slot: slot });
+    closeModal('bookModal');
+    showToast(res.message, 'success');
+    setTimeout(() => window.location.href = '/patient/appointments.html', 1500);
+  } catch (err) {
+    showToast(err.message, 'error');
+    hideLoading(btn);
+  }
+}
+
+function filterDoctors() {
+  const name = document.getElementById('searchName').value.toLowerCase();
+  const spec = document.getElementById('searchSpec').value.toLowerCase();
+  const filtered = allDoctors.filter(d =>
+    (!name || d.name.toLowerCase().includes(name)) &&
+    (!spec || (d.specialty || '').toLowerCase().includes(spec))
+  );
+  const cards = filtered.length ? filtered.map(d => `
+    <div class="bg-white rounded-2xl shadow-sm border border-slate-100 p-6 hover:shadow-md hover:border-teal-200 transition-all">
+      <div class="flex items-start gap-4">
+        <div class="w-14 h-14 bg-gradient-to-br from-teal-400 to-cyan-500 rounded-2xl flex items-center justify-center text-white text-2xl font-bold flex-shrink-0">${d.name?.[0]||'D'}</div>
+        <div class="flex-1"><h3 class="font-bold text-slate-800">Dr. ${d.name}</h3><p class="text-teal-600 text-sm font-semibold">${d.specialty||'General'}</p><p class="text-slate-500 text-xs mt-1">${d.qualification||''} · ${d.experience_years||0} yrs exp</p></div>
+      </div>
+      <div class="mt-4 pt-4 border-t border-slate-50 flex items-center justify-between">
+        <div><span class="text-slate-400 text-xs">Consultation Fee</span><div class="text-teal-700 font-bold text-lg">₹${d.consultation_fee||500}</div></div>
+        <button onclick="openBooking(${d.id},'${d.name}','${d.specialty||'General'}',${d.consultation_fee||500})" class="px-5 py-2.5 bg-teal-600 hover:bg-teal-700 text-white text-sm font-bold rounded-xl transition-all">Book Now</button>
+      </div>
+    </div>
+  `).join('') : emptyState('No doctors found', '👨‍⚕️');
+  document.getElementById('doctorGrid').innerHTML = cards;
+}
+
+loadPage();
+</script>
+</body>
+</html>

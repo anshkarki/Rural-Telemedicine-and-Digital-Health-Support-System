@@ -1,0 +1,139 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" /><meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Patient Dashboard — RuralMed</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <link href="https://fonts.googleapis.com/css2?family=Syne:wght@700;800&family=DM+Sans:wght@400;500;600&display=swap" rel="stylesheet" />
+  <style>:root{font-family:'DM Sans',sans-serif} h1,h2,h3{font-family:'Syne',sans-serif}</style>
+</head>
+<body class="bg-slate-50">
+<div id="app">
+  <div class="flex items-center justify-center h-screen">
+    <div class="flex flex-col items-center gap-3">
+      <svg class="animate-spin w-10 h-10 text-teal-500" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"></path></svg>
+      <p class="text-slate-500">Loading dashboard...</p>
+    </div>
+  </div>
+</div>
+<script src="/js/api.js"></script>
+<script src="/js/ui.js"></script>
+<script>
+if (!requireAuth('patient')) throw new Error('Unauthorized');
+const user = getUser();
+
+async function loadDashboard() {
+  const [appointments, emergencies] = await Promise.all([
+    GET('/appointments/my').catch(() => []),
+    GET('/health/emergencies/my').catch(() => [])
+  ]);
+
+  const upcoming = appointments.filter(a => ['confirmed','pending','payment_pending'].includes(a.status)).slice(0,4);
+  const stats = {
+    total: appointments.length,
+    upcoming: upcoming.length,
+    completed: appointments.filter(a => a.status==='completed').length,
+    emergency: emergencies.filter(e => e.status === 'open').length
+  };
+
+  const now = new Date();
+  function getGreeting() {
+    const h = now.getHours();
+    if (h < 12) return 'Good Morning';
+    if (h < 17) return 'Good Afternoon';
+    return 'Good Evening';
+  }
+
+  const upcomingRows = upcoming.length ? upcoming.map(a => `
+    <div class="flex items-center gap-4 p-4 bg-slate-50 rounded-xl hover:bg-teal-50 transition-colors">
+      <div class="w-12 h-12 bg-teal-100 rounded-xl flex items-center justify-center text-teal-600 font-bold text-sm flex-shrink-0">
+        ${new Date(a.appointment_date).getDate()}<br/><span class="text-xs font-normal">${new Date(a.appointment_date).toLocaleString('en-IN',{month:'short'})}</span>
+      </div>
+      <div class="flex-1 min-w-0">
+        <div class="font-semibold text-slate-800 text-sm">Dr. ${a.doctor_name}</div>
+        <div class="text-slate-500 text-xs">${a.specialty} · ${a.time_slot}</div>
+      </div>
+      <div class="flex flex-col items-end gap-1">
+        ${statusBadge(a.status)}
+        ${a.status === 'payment_pending' ? `<a href="/patient/appointments.html" class="text-xs text-orange-600 font-semibold hover:underline">Pay Now</a>` : ''}
+        ${a.status === 'confirmed' && a.meet_link ? `<a href="${a.meet_link}" target="_blank" class="text-xs text-teal-600 font-semibold hover:underline">🎥 Join</a>` : ''}
+      </div>
+    </div>
+  `).join('') : `<div class="py-8 text-center text-slate-400"><div class="text-4xl mb-2">📅</div><p>No upcoming appointments</p><a href="/patient/find-doctor.html" class="inline-block mt-3 text-teal-600 text-sm font-semibold hover:underline">Book one now →</a></div>`;
+
+  const content = `
+    <div class="p-8">
+      <!-- Header -->
+      <div class="flex items-start justify-between mb-8">
+        <div>
+          <p class="text-slate-500 text-sm">${getGreeting()},</p>
+          <h1 class="text-2xl font-bold text-slate-800">${user.name} 👋</h1>
+          <p class="text-slate-400 text-sm mt-0.5">${now.toLocaleDateString('en-IN',{weekday:'long',year:'numeric',month:'long',day:'numeric'})}</p>
+        </div>
+        <a href="/patient/emergency.html" class="flex items-center gap-2 px-5 py-3 bg-red-500 hover:bg-red-600 text-white rounded-xl font-bold text-sm transition-all shadow-lg hover:shadow-red-500/30 hover:scale-105">
+          🚨 Emergency
+        </a>
+      </div>
+
+      <!-- Stat Cards -->
+      <div class="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-8">
+        ${statCard('📅', stats.total, 'Total Appointments', 'teal')}
+        ${statCard('⏳', stats.upcoming, 'Upcoming', 'sky')}
+        ${statCard('✅', stats.completed, 'Completed', 'emerald')}
+        ${statCard('🚨', stats.emergency, 'Open Emergencies', stats.emergency > 0 ? 'red' : 'violet')}
+      </div>
+
+      <!-- Main Grid -->
+      <div class="grid lg:grid-cols-3 gap-6">
+        <!-- Upcoming Appointments -->
+        <div class="lg:col-span-2 bg-white rounded-2xl shadow-sm border border-slate-100 p-6">
+          <div class="flex items-center justify-between mb-5">
+            <h2 class="font-bold text-slate-800">Upcoming Appointments</h2>
+            <a href="/patient/appointments.html" class="text-sm text-teal-600 font-semibold hover:underline">View all →</a>
+          </div>
+          <div class="space-y-3">${upcomingRows}</div>
+        </div>
+
+        <!-- Quick Actions -->
+        <div class="space-y-4">
+          <div class="bg-white rounded-2xl shadow-sm border border-slate-100 p-6">
+            <h2 class="font-bold text-slate-800 mb-4">Quick Actions</h2>
+            <div class="space-y-3">
+              <a href="/patient/find-doctor.html" class="flex items-center gap-3 p-3 rounded-xl bg-teal-50 hover:bg-teal-100 text-teal-700 transition-colors text-sm font-semibold">
+                <span class="text-xl">🔍</span> Find a Doctor
+              </a>
+              <a href="/patient/health-records.html" class="flex items-center gap-3 p-3 rounded-xl bg-sky-50 hover:bg-sky-100 text-sky-700 transition-colors text-sm font-semibold">
+                <span class="text-xl">📋</span> Health Records
+              </a>
+              <a href="/patient/prescriptions.html" class="flex items-center gap-3 p-3 rounded-xl bg-violet-50 hover:bg-violet-100 text-violet-700 transition-colors text-sm font-semibold">
+                <span class="text-xl">💊</span> My Prescriptions
+              </a>
+              <a href="/patient/issues.html" class="flex items-center gap-3 p-3 rounded-xl bg-amber-50 hover:bg-amber-100 text-amber-700 transition-colors text-sm font-semibold">
+                <span class="text-xl">❓</span> Submit Health Issue
+              </a>
+              <a href="/patient/referrals.html" class="flex items-center gap-3 p-3 rounded-xl bg-emerald-50 hover:bg-emerald-100 text-emerald-700 transition-colors text-sm font-semibold">
+                <span class="text-xl">🏥</span> Referral Status
+              </a>
+            </div>
+          </div>
+
+          <!-- Health Tips -->
+          <div class="bg-gradient-to-br from-teal-600 to-cyan-600 rounded-2xl p-5 text-white">
+            <div class="text-2xl mb-2">💡</div>
+            <h3 class="font-bold mb-1 text-sm">Health Tip of the Day</h3>
+            <p class="text-teal-100 text-xs leading-relaxed">Drink 8 glasses of water daily and maintain regular sleep patterns. Prevention is better than cure.</p>
+          </div>
+        </div>
+      </div>
+    </div>
+  `;
+
+  document.getElementById('app').innerHTML = buildLayout('patient', '/patient/dashboard.html', content);
+}
+
+loadDashboard().catch(err => {
+  document.getElementById('app').innerHTML = `<div class="flex items-center justify-center h-screen text-red-500">${err.message}</div>`;
+});
+</script>
+</body>
+</html>
